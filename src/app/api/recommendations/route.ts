@@ -29,11 +29,18 @@ export async function POST(request: NextRequest) {
       ? (body.waterAvailability as RecommendationInput["waterAvailability"])
       : "Medium";
 
-  const location: RecommendationInput["location"] =
-    typeof body.location === "string" &&
-    farmerLocations.some((farmerLocation) => farmerLocation.name === body.location)
-      ? body.location
-      : "Tamil Nadu";
+  const location: RecommendationInput["location"] = (() => {
+    if (typeof body.location !== "string") {
+      return "Tamil Nadu";
+    }
+
+    // Allow both `location.name` and `location.state` from the frontend dropdowns.
+    const match = farmerLocations.find(
+      (farmerLocation) => farmerLocation.name === body.location || farmerLocation.state === body.location,
+    );
+
+    return match?.state ?? "Tamil Nadu";
+  })();
 
   const valueOrDefault = (value: unknown, fallback: number) =>
     typeof value === "number" && Number.isFinite(value) ? value : fallback;

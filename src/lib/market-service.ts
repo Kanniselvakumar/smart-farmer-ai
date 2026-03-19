@@ -660,7 +660,10 @@ function getSelectedState(locationName: string) {
     return null;
   }
 
-  return normalizeStateName(locationName);
+  // If the frontend passes a "location.name" (could be a city or a state/UT),
+  // map it back to the canonical state/UT for strict filtering.
+  const directMatch = farmerLocations.find((location) => location.name === locationName);
+  return directMatch?.state ?? normalizeStateName(locationName);
 }
 
 function parseHistoricalStore(): HistoricalStore {
@@ -866,30 +869,10 @@ function getScopedMarketSelection(
     recordMatchesSelectedState(record, selectedState),
   );
 
-  if (sameStateRecords.length > 0) {
-    return {
-      scope: "state" as MarketQueryScope,
-      scopedRecords: sameStateRecords,
-      nearbyMarkets: sameStateRecords,
-    };
-  }
-
-  const nearbyRecords = records
-    .filter((record) => record.distanceKm !== null && record.distanceKm <= radiusKm)
-    .sort(compareMarketsByBestOption);
-
-  if (nearbyRecords.length > 0) {
-    return {
-      scope: "radius" as MarketQueryScope,
-      scopedRecords: nearbyRecords,
-      nearbyMarkets: nearbyRecords,
-    };
-  }
-
   return {
-    scope: "fallback" as MarketQueryScope,
-    scopedRecords: [], // Return empty when a location is selected but no matches found
-    nearbyMarkets: [],
+    scope: "state" as MarketQueryScope,
+    scopedRecords: sameStateRecords,
+    nearbyMarkets: sameStateRecords,
   };
 }
 

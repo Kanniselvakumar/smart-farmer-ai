@@ -380,7 +380,10 @@ function predictProbabilities(model: RandomForestModel, features: number[]) {
 }
 
 function getLocationZone(locationName: string) {
-  return farmerLocations.find((location) => location.name === locationName)?.zone ?? "dryland";
+  return (
+    farmerLocations.find((location) => location.name === locationName || location.state === locationName)
+      ?.zone ?? "dryland"
+  );
 }
 
 function estimateInputFeatures(input: RecommendationInput, model: RandomForestModel) {
