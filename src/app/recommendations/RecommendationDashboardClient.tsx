@@ -102,7 +102,7 @@ export function RecommendationDashboardClient() {
       setSoilError(
         classificationError instanceof Error
           ? classificationError.message
-          : "Unable to classify the soil image right now.",
+          : "Unable to classify the soil image right now. Please try a different photo or check your connection.",
       );
     } finally {
       setIsClassifyingSoil(false);
@@ -194,6 +194,9 @@ export function RecommendationDashboardClient() {
     if (file) {
       void classifySoil(file);
     }
+
+    // Reset the target value to ensure selecting the same file again triggers the event.
+    event.target.value = "";
   }
 
   function handleChooseSoilPhoto() {
@@ -346,7 +349,7 @@ export function RecommendationDashboardClient() {
                     key={soilInputKey}
                     className="hidden"
                     type="file"
-                    accept="image/*"
+                    accept="image/png, image/jpeg, image/jpg, image/webp"
                     suppressHydrationWarning
                     onChange={handleSoilPhotoChange}
                   />

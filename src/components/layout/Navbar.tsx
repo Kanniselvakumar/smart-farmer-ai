@@ -5,8 +5,7 @@ import { usePathname } from "next/navigation";
 import { LineChart, Sprout, Tractor } from "lucide-react";
 
 const links = [
-  { href: "/", label: "Home" },
-  { href: "/recommendations", label: "Recommendations" },
+  { href: "/", label: "Recommendations" },
   { href: "/market", label: "Market" },
 ];
 
@@ -46,7 +45,7 @@ export function Navbar() {
         </div>
 
         <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 lg:inline-flex">
-          {pathname === "/recommendations" ? (
+          {pathname === "/" ? (
             <Sprout className="h-4 w-4 text-emerald-700" />
           ) : (
             <LineChart className="h-4 w-4 text-amber-700" />

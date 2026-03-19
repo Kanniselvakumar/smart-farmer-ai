@@ -335,7 +335,7 @@ export function MarketDashboardClient() {
           <div className="max-w-2xl">
             <h2 className="text-2xl font-semibold text-slate-900">Search and market filters</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Search by crop, switch between an India-wide view and any state or UT, and use the fallback radius only when needed.
+              Search by crop and switch between an India-wide view and any state or UT.
             </p>
           </div>
           <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
@@ -344,7 +344,7 @@ export function MarketDashboardClient() {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-4 lg:grid-cols-[1.2fr,0.8fr,0.6fr,auto]">
+        <div className="mt-6 grid gap-4 lg:grid-cols-[1.2fr,1fr,auto]">
           <label className="grid gap-2 text-sm font-medium text-slate-700">
             Crop search
             <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3">
@@ -375,32 +375,6 @@ export function MarketDashboardClient() {
             </select>
             <span className="text-xs leading-5 text-slate-500">
               Selected region: {formatRegionLabel(location)}
-            </span>
-          </label>
-
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Fallback radius
-            <select
-              className={`rounded-2xl border px-4 py-3 text-slate-900 outline-none transition ${
-                radiusDisabled
-                  ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
-                  : "border-slate-200 bg-white focus:border-emerald-400"
-              }`}
-              suppressHydrationWarning
-              value={radiusKm}
-              disabled={radiusDisabled}
-              onChange={(event) => setRadiusKm(Number(event.target.value))}
-            >
-              {radiusOptions.map((radiusOption) => (
-                <option key={radiusOption} value={radiusOption}>
-                  {radiusOption} km
-                </option>
-              ))}
-            </select>
-            <span className="text-xs leading-5 text-slate-500">
-              {radiusDisabled
-                ? "Radius is only used after you narrow the market search to a specific state or UT."
-                : `If the selected state has no direct crop match, the dashboard can fall back to nearby markets within ${radiusKm} km.`}
             </span>
           </label>
 

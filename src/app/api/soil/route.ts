@@ -10,18 +10,19 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const image = formData.get("image");
 
-    if (!(image instanceof File)) {
+    if (!image || typeof image === "string" || typeof (image as any).arrayBuffer !== "function") {
       return NextResponse.json({ error: "Upload a soil image first." }, { status: 400 });
     }
 
-    if (image.size === 0 || image.size > MAX_IMAGE_BYTES) {
+    const file = image as File;
+    if (file.size === 0 || file.size > MAX_IMAGE_BYTES) {
       return NextResponse.json(
         { error: "Use an image file smaller than 10 MB." },
         { status: 400 },
       );
     }
 
-    const imageBuffer = Buffer.from(await image.arrayBuffer());
+    const imageBuffer = Buffer.from(await file.arrayBuffer());
     const prediction = await classifySoilImage(imageBuffer);
 
     return NextResponse.json(prediction);

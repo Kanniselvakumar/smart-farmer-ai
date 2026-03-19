@@ -53,6 +53,7 @@ async function extractImageVector(source: Buffer | string) {
   const { data, info } = await sharp(source)
     .rotate()
     .resize(IMAGE_SIZE, IMAGE_SIZE, { fit: "cover", position: "attention" })
+    .toColorspace("srgb")
     .removeAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
