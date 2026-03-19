@@ -655,6 +655,14 @@ function getSelectedLocation(locationName: string) {
   return stateMatch ?? null;
 }
 
+function getSelectedState(locationName: string) {
+  if (isAllIndiaLocation(locationName)) {
+    return null;
+  }
+
+  return normalizeStateName(locationName);
+}
+
 function parseHistoricalStore(): HistoricalStore {
   const series = new Map<string, Array<{ date: string; timestamp: number; price: number }>>();
   const latestByCropMarket = new Map<string, HistoricalObservation>();
@@ -833,20 +841,20 @@ function compareMarketsByBestOption(left: MarketRecordWithInsights, right: Marke
   return (left.distanceKm ?? Number.POSITIVE_INFINITY) - (right.distanceKm ?? Number.POSITIVE_INFINITY);
 }
 
-function recordMatchesSelectedState(record: MarketRecord, selectedLocation: (typeof farmerLocations)[number] | null) {
-  if (!selectedLocation) {
+function recordMatchesSelectedState(record: MarketRecord, selectedState: string | null) {
+  if (!selectedState) {
     return false;
   }
 
-  return normalizeText(normalizeStateName(record.state)) === normalizeText(selectedLocation.state);
+  return normalizeText(normalizeStateName(record.state)) === normalizeText(normalizeStateName(selectedState));
 }
 
 function getScopedMarketSelection(
   records: MarketRecordWithInsights[],
-  selectedLocation: (typeof farmerLocations)[number] | null,
+  selectedState: string | null,
   radiusKm: number,
 ) {
-  if (!selectedLocation) {
+  if (!selectedState) {
     return {
       scope: "all-india" as MarketQueryScope,
       scopedRecords: records,
@@ -854,7 +862,9 @@ function getScopedMarketSelection(
     };
   }
 
-  const sameStateRecords = records.filter((record) => recordMatchesSelectedState(record, selectedLocation));
+  const sameStateRecords = records.filter((record) =>
+    recordMatchesSelectedState(record, selectedState),
+  );
 
   if (sameStateRecords.length > 0) {
     return {
@@ -878,8 +888,8 @@ function getScopedMarketSelection(
 
   return {
     scope: "fallback" as MarketQueryScope,
-    scopedRecords: records,
-    nearbyMarkets: records.slice(0, 8),
+    scopedRecords: [], // Return empty when a location is selected but no matches found
+    nearbyMarkets: [],
   };
 }
 
@@ -1015,7 +1025,8 @@ function buildProfitSuggestion(
 }
 
 function enrichRecords(records: MarketRecord[], selectedLocationName: string) {
-  const selectedLocation = getSelectedLocation(selectedLocationName);
+  const selectedState = getSelectedState(selectedLocationName);
+  const selectedLocation = selectedState ? getLocationByState(selectedState) : null;
 
   return records
     .map((record) => {
@@ -1049,7 +1060,7 @@ export function getMarketDashboardData({
   radiusKm?: number;
 }): MarketDashboardResponse {
   const trimmedCrop = crop.trim();
-  const selectedLocation = getSelectedLocation(location);
+  const selectedState = getSelectedState(location);
   const localRecords = findLocalRecords(trimmedCrop);
   const historicalRecords = findHistoricalRecords(trimmedCrop);
   const mergedRecords = enrichRecords(
@@ -1061,7 +1072,7 @@ export function getMarketDashboardData({
   );
   const { scope, scopedRecords, nearbyMarkets } = getScopedMarketSelection(
     mergedRecords,
-    selectedLocation,
+    selectedState,
     radiusKm,
   );
 
@@ -1092,15 +1103,15 @@ export function getMarketDashboardData({
     scope === "all-india"
       ? "Showing the best matching market options across India."
       : scope === "state"
-        ? `Showing markets in ${selectedLocation!.state} first so the best option changes with your selected state or UT.`
+        ? `Showing markets in ${selectedState!} first so the best option changes with your selected state or UT.`
         : scope === "radius"
-          ? `No matching markets were found inside ${selectedLocation!.state}, so the dashboard fell back to the best options within about ${radiusKm} km.`
+          ? `No matching markets were found inside ${selectedState!}, so the dashboard fell back to the best options within about ${radiusKm} km.`
           : "No selected-state markets were available, so the dashboard fell back to the best matching options across India.";
 
   return {
     query: {
       crop,
-      location: selectedLocation?.name ?? ALL_INDIA_LOCATION_NAME,
+      location: selectedState ?? ALL_INDIA_LOCATION_NAME,
       radiusKm,
       scope,
     },
