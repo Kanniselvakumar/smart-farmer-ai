@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "generate:soil-index": "node scripts/generate-soil-reference-index.mjs"
   },
   "dependencies": {
     "@tensorflow/tfjs": "^4.22.0",
