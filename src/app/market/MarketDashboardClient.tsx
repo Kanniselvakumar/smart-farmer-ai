@@ -558,7 +558,6 @@ export function MarketDashboardClient() {
                 <th className="pb-4 pr-6 font-medium">Latest</th>
                 <th className="pb-4 pr-6 font-medium">Previous</th>
                 <th className="pb-4 pr-6 font-medium">Trend</th>
-                <th className="pb-4 pr-6 font-medium">Distance</th>
                 <th className="pb-4 font-medium">Updated</th>
               </tr>
             </thead>
@@ -578,7 +577,6 @@ export function MarketDashboardClient() {
                   <td className="py-4 pr-6">
                     <TrendBadge record={record} />
                   </td>
-                  <td className="py-4 pr-6">{formatDistance(record.distanceKm)}</td>
                   <td className="py-4 font-medium text-slate-900">{formatUpdatedAt(record.updatedAt)}</td>
                 </tr>
               ))}

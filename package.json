@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "generate:soil-index": "node scripts/generate-soil-reference-index.mjs"
+    "generate:soil-index": "node scripts/generate-soil-reference-index.mjs",
+    "train:market": "node src/train-market-model.mjs"
   },
   "dependencies": {
     "@tensorflow/tfjs": "^4.22.0",

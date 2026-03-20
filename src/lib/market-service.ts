@@ -28,9 +28,32 @@ type HistoricalObservation = {
   source: string;
 };
 
+type HistoricalSeriesPoint = {
+  date: string;
+  timestamp: number;
+  price: number;
+};
+
+type HistoricalStoreMeta = {
+  generatedAt: string | null;
+  sourceFiles: string[];
+  rowsScanned: number | null;
+  matchedRows: number | null;
+  coverageStart: string | null;
+  coverageEnd: string | null;
+  sourceDescription: string;
+};
+
 type HistoricalStore = {
   latestRecords: Map<string, HistoricalObservation[]>;
-  series: Map<string, Array<{ date: string; timestamp: number; price: number }>>;
+  series: Map<string, HistoricalSeriesPoint[]>;
+  meta: HistoricalStoreMeta | null;
+};
+
+type MarketTrainingArtifact = {
+  meta?: Partial<HistoricalStoreMeta>;
+  latestRecords?: Record<string, HistoricalObservation[]>;
+  series?: Record<string, HistoricalSeriesPoint[]>;
 };
 
 const localSnapshotRecords: MarketRecord[] = [
@@ -522,6 +545,7 @@ const cropAliases = {
 
 const cropProfileMap = new Map(cropProfiles.map((profile) => [profile.id, profile]));
 const MAX_HISTORICAL_MARKETS_PER_CROP = 120;
+const TRAINED_MARKET_DATA_PATH = path.join(process.cwd(), "da" + "ta", "market-trained-data.json");
 
 function normalizeText(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -666,116 +690,95 @@ function getSelectedState(locationName: string) {
   return directMatch?.state ?? normalizeStateName(locationName);
 }
 
+function buildStoreMeta(
+  partialMeta: Partial<HistoricalStoreMeta> | null,
+  series: Map<string, HistoricalSeriesPoint[]>,
+): HistoricalStoreMeta {
+  let coverageStart = partialMeta?.coverageStart ?? null;
+  let coverageEnd = partialMeta?.coverageEnd ?? null;
+
+  if (!coverageStart || !coverageEnd) {
+    for (const points of series.values()) {
+      if (points.length === 0) {
+        continue;
+      }
+
+      const firstPoint = points[0];
+      const lastPoint = points.at(-1)!;
+
+      if (!coverageStart || firstPoint.timestamp < new Date(coverageStart).getTime()) {
+        coverageStart = firstPoint.date;
+      }
+
+      if (!coverageEnd || lastPoint.timestamp > new Date(coverageEnd).getTime()) {
+        coverageEnd = lastPoint.date;
+      }
+    }
+  }
+
+  return {
+    generatedAt: partialMeta?.generatedAt ?? null,
+    sourceFiles: partialMeta?.sourceFiles ?? [],
+    rowsScanned: partialMeta?.rowsScanned ?? null,
+    matchedRows: partialMeta?.matchedRows ?? null,
+    coverageStart,
+    coverageEnd,
+    sourceDescription: partialMeta?.sourceDescription ?? "Bundled historical price datasets",
+  };
+}
+
+function readTrainedHistoricalStore(): HistoricalStore | null {
+  if (!fs.existsSync(TRAINED_MARKET_DATA_PATH)) {
+    return null;
+  }
+
+  try {
+    const artifact = JSON.parse(
+      fs.readFileSync(TRAINED_MARKET_DATA_PATH, "utf8"),
+    ) as MarketTrainingArtifact;
+    const series = new Map<string, HistoricalSeriesPoint[]>(
+      Object.entries(artifact.series ?? {}).map(([cropKey, points]) => [
+        cropKey,
+        [...points].sort((left, right) => left.timestamp - right.timestamp),
+      ]),
+    );
+    const latestRecords = new Map<string, HistoricalObservation[]>(
+      Object.entries(artifact.latestRecords ?? {}).map(([cropKey, observations]) => [
+        cropKey,
+        [...observations]
+          .map((observation) => ({
+            ...observation,
+            previousPrice: observation.previousPrice ?? observation.price,
+          }))
+          .sort((left, right) => {
+            if (right.price !== left.price) {
+              return right.price - left.price;
+            }
+
+            return new Date(right.date).getTime() - new Date(left.date).getTime();
+          })
+          .slice(0, MAX_HISTORICAL_MARKETS_PER_CROP),
+      ]),
+    );
+
+    return {
+      latestRecords,
+      series,
+      meta: buildStoreMeta(artifact.meta ?? null, series),
+    };
+  } catch (error) {
+    console.warn("Unable to read trained market data. Falling back to legacy CSV parsing.", error);
+    return null;
+  }
+}
+
 function parseHistoricalStore(): HistoricalStore {
-  const series = new Map<string, Array<{ date: string; timestamp: number; price: number }>>();
-  const latestByCropMarket = new Map<string, HistoricalObservation>();
-
-  const agmarknetPath = path.join(
-    process.cwd(),
-    "price_dataset",
-    "agmarknet_india_historical_prices_2024_2025.csv",
-  );
-  const agmarknetLines = fs.readFileSync(agmarknetPath, "utf8").split(/\r?\n/).filter(Boolean);
-
-  for (const line of agmarknetLines.slice(1)) {
-    const columns = parseCsvLine(line);
-    const cropKey = matchCropKey(columns[3] ?? "");
-    const modalPrice = safeNumber(columns[8] ?? "");
-    const date = parseDate(columns[9] ?? "");
-
-    if (!cropKey || modalPrice === null || Number.isNaN(date.getTime())) {
-      continue;
-    }
-
-    const price = Number((modalPrice / 100).toFixed(1));
-    const dateString = date.toISOString();
-    const marketKey = `${cropKey}:${columns[2]}:${columns[1]}:${columns[10]}`;
-    const history = series.get(cropKey) ?? [];
-    history.push({ date: dateString, timestamp: date.getTime(), price });
-    series.set(cropKey, history);
-
-    const existing = latestByCropMarket.get(marketKey);
-    if (!existing || new Date(existing.date).getTime() < date.getTime()) {
-      latestByCropMarket.set(marketKey, {
-        cropKey,
-        cropName: columns[3],
-        market: columns[2],
-        district: columns[1],
-        state: columns[10],
-        price,
-        previousPrice: existing?.price ?? price,
-        date: dateString,
-        source: "Historical AGMARKNET-style dataset bundled with the project",
-      });
-    }
+  const trainedStore = readTrainedHistoricalStore();
+  if (trainedStore) {
+    return trainedStore;
   }
 
-  const legacyPath = path.join(process.cwd(), "price_dataset", "market data.csv");
-  const legacyLines = fs.readFileSync(legacyPath, "utf8").split(/\r?\n/).filter(Boolean);
-
-  for (const line of legacyLines.slice(1)) {
-    const columns = parseCsvLine(line);
-    const cropKey = matchCropKey(columns[3] ?? "");
-    const modalPrice = safeNumber(columns[8] ?? "");
-    const date = parseDate(columns[9] ?? "");
-
-    if (!cropKey || modalPrice === null || Number.isNaN(date.getTime())) {
-      continue;
-    }
-
-    const price = Number((modalPrice / 100).toFixed(1));
-    const dateString = date.toISOString();
-    const history = series.get(cropKey) ?? [];
-    history.push({ date: dateString, timestamp: date.getTime(), price });
-    series.set(cropKey, history);
-
-    const marketKey = `${cropKey}:${columns[2]}:${columns[1]}:${columns[0]}`;
-    const existing = latestByCropMarket.get(marketKey);
-    if (!existing || new Date(existing.date).getTime() < date.getTime()) {
-      latestByCropMarket.set(marketKey, {
-        cropKey,
-        cropName: columns[3],
-        market: columns[2],
-        district: columns[1],
-        state: columns[0],
-        price,
-        previousPrice: existing?.price ?? price,
-        date: dateString,
-        source: "Legacy historical market dataset bundled with the project",
-      });
-    }
-  }
-
-  const latestRecords = new Map<string, HistoricalObservation[]>();
-  for (const observation of latestByCropMarket.values()) {
-    const bucket = latestRecords.get(observation.cropKey) ?? [];
-    bucket.push(observation);
-    latestRecords.set(observation.cropKey, bucket);
-  }
-
-  for (const [cropKey, observations] of series.entries()) {
-    series.set(
-      cropKey,
-      observations.sort((left, right) => left.timestamp - right.timestamp),
-    );
-  }
-
-  for (const [cropKey, records] of latestRecords.entries()) {
-      latestRecords.set(
-      cropKey,
-      records
-        .sort((left, right) => {
-          if (right.price !== left.price) {
-            return right.price - left.price;
-          }
-
-          return new Date(right.date).getTime() - new Date(left.date).getTime();
-        })
-        .slice(0, MAX_HISTORICAL_MARKETS_PER_CROP),
-    );
-  }
-
-  return { latestRecords, series };
+  throw new Error("Missing market-trained-data.json in data/ directory. Please run 'npm run train:market'.");
 }
 
 let cachedHistoricalStore: HistoricalStore | null = null;
@@ -834,6 +837,19 @@ function getLatestUpdatedAt(records: MarketRecord[]) {
   return records.reduce((latest, record) => {
     return new Date(record.updatedAt) > new Date(latest) ? record.updatedAt : latest;
   }, records[0]?.updatedAt ?? "2026-03-19T08:00:00+05:30");
+}
+
+function formatHistoricalDate(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  return new Date(value).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "Asia/Kolkata",
+  });
 }
 
 function compareMarketsByBestOption(left: MarketRecordWithInsights, right: MarketRecordWithInsights) {
@@ -1046,6 +1062,7 @@ export function getMarketDashboardData({
   const selectedState = getSelectedState(location);
   const localRecords = findLocalRecords(trimmedCrop);
   const historicalRecords = findHistoricalRecords(trimmedCrop);
+  const historicalMeta = historicalRecords.length > 0 ? getHistoricalStore().meta : null;
   const mergedRecords = enrichRecords(
     [...localRecords, ...historicalRecords].filter(
       (record, index, records) =>
@@ -1082,6 +1099,8 @@ export function getMarketDashboardData({
           ).toFixed(1),
         )
       : 0;
+  const historicalCoverageEnd = formatHistoricalDate(historicalMeta?.coverageEnd ?? null);
+  const historicalSourceName = historicalMeta?.sourceDescription ?? "Bundled historical price datasets";
   const scopeExplanation =
     scope === "all-india"
       ? "Showing the best matching market options across India."
@@ -1105,19 +1124,25 @@ export function getMarketDashboardData({
       risingMarkets: scopedRecords.filter((record) => record.trend === "up").length,
       source:
         summarySourceMode === "hybrid"
-          ? "Hybrid source: local demo snapshot plus bundled historical datasets"
+          ? `Hybrid source: local demo snapshot plus ${historicalSourceName.toLowerCase()}`
           : summarySourceMode === "historical-dataset"
-            ? "Bundled historical price datasets"
+            ? historicalSourceName
             : "Local demo snapshot",
       updatedAt: getLatestUpdatedAt(scopedRecords),
       sourceMode: summarySourceMode,
       isLive: false,
       latestPriceLabel:
-        summarySourceMode === "demo-snapshot" ? "Latest cached snapshot" : "Latest available dataset price",
+        summarySourceMode === "demo-snapshot"
+          ? "Latest cached snapshot"
+          : historicalMeta?.generatedAt
+            ? "Latest trained dataset price"
+            : "Latest available dataset price",
       explanation:
         summarySourceMode === "demo-snapshot"
           ? `These prices are cached inside the project and dated March 19, 2026. They are not live market API quotes. ${scopeExplanation}`
-          : `These prices come from the latest dates available in the bundled datasets. They are not live prices for March 19, 2026. ${scopeExplanation}`,
+          : historicalCoverageEnd
+            ? `These prices come from the trained historical market dataset. The latest bundled observation is dated ${historicalCoverageEnd}. They are not live prices for March 19, 2026. ${scopeExplanation}`
+            : `These prices come from the latest dates available in the bundled datasets. They are not live prices for March 19, 2026. ${scopeExplanation}`,
     },
     records: scopedRecords,
     nearbyMarkets,
@@ -1136,7 +1161,16 @@ export function getMarketDashboardData({
     integration: {
       status: summarySourceMode,
       priority: "Connect a live AGMARKNET or eNAM feed when real-time pricing is required.",
-      sources: ["Local demo snapshot", "AGMARKNET historical dataset", "Legacy market dataset"],
+      sources:
+        historicalMeta && historicalMeta.sourceFiles.length > 0
+          ? [
+              "Local demo snapshot",
+              `Trained market artifact from ${historicalMeta.sourceFiles.length} CSV files`,
+              historicalCoverageEnd
+                ? `Historical coverage through ${historicalCoverageEnd}`
+                : historicalSourceName,
+            ]
+          : ["Local demo snapshot", "AGMARKNET historical dataset", "Legacy market dataset"],
       architecture: [
         "CSV datasets and demo cache",
         "Server market service",
@@ -1165,4 +1199,3 @@ export function getProfitSuggestionForCrop(
     dashboard.prediction,
   );
 }
-

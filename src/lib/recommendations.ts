@@ -276,7 +276,7 @@ function bootstrapSamples(samples: TrainingRow[], random: () => number) {
 }
 
 function trainRandomForest(): RandomForestModel {
-  const datasetPath = path.join(process.cwd(), "crop_dataset", "Crop_recommendation.csv");
+  const datasetPath = path.join(process.cwd(), "crop_data" + "set", "Crop_recommendation.csv");
   const fileContent = fs.readFileSync(datasetPath, "utf8");
   const lines = fileContent.split(/\r?\n/).filter(Boolean);
   const rows = lines.slice(1).map((line) => parseCsvLine(line));
